@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ULTRON — AI Assistant</title>
   <link rel="stylesheet" href="/style.css" />
+  <!-- Markdown + syntax highlighting for rich, copyable code answers -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
   <div id="login-overlay" class="login-overlay" hidden>
@@ -17,6 +21,15 @@
     </form>
   </div>
 
+  <!-- command palette (Ctrl/Cmd + K) -->
+  <div id="cmdk" class="cmdk" hidden>
+    <div class="cmdk-box">
+      <input id="cmdk-input" placeholder="Type a command…  (projects, brain, clear, export)" autocomplete="off" />
+      <div id="cmdk-list" class="cmdk-list"></div>
+      <div class="cmdk-hint">↑↓ to move · Enter to run · Esc to close</div>
+    </div>
+  </div>
+
   <div class="app">
 
     <!-- header -->
@@ -26,7 +39,35 @@
       <div class="spacer"></div>
       <div class="status-pill"><span id="conn-dot" class="dot"></span><span id="conn-text">connecting…</span></div>
       <div class="status-pill"><span id="brain-text">brain: —</span></div>
+      <button id="project-pill" class="status-pill pill-btn" title="Projects / workspaces">project: —</button>
+      <button id="mode-pill" class="status-pill pill-btn" title="Response length">length: auto</button>
+      <button id="voice-pill" class="status-pill pill-btn" title="Voice settings">voice</button>
     </header>
+
+    <!-- projects / workspaces popover -->
+    <div id="project-panel" class="voice-panel" hidden>
+      <h3>Projects</h3>
+      <div id="project-list"></div>
+      <div class="new-project">
+        <input id="new-project-name" placeholder="New project name…" />
+        <button id="new-project-btn" class="login-btn" style="width:auto;padding:8px 14px">Create</button>
+      </div>
+    </div>
+
+    <!-- voice settings popover -->
+    <div id="voice-panel" class="voice-panel" hidden>
+      <h3>Voice</h3>
+      <label>Voice
+        <select id="voice-select"></select>
+      </label>
+      <label>Speed <span id="rate-val">1.0</span>
+        <input id="rate-range" type="range" min="0.6" max="1.6" step="0.05" value="1.02" />
+      </label>
+      <label>Pitch <span id="pitch-val">0.9</span>
+        <input id="pitch-range" type="range" min="0.5" max="1.5" step="0.05" value="0.9" />
+      </label>
+      <button id="voice-test" class="login-btn" style="width:auto;padding:8px 16px">Test voice</button>
+    </div>
 
     <!-- left: reactor + tools -->
     <aside class="panel left">

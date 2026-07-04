@@ -61,25 +61,37 @@ def _extract_json(text: str) -> dict:
     return {"final": text}
 
 
-def run(session: str, user_message: str, image: str | None = None) -> Iterator[dict]:
+_MODE_HINTS = {
+    "brief": "\n\n# Length for THIS reply\nBe brief and to the point — a few "
+             "sentences at most. No preamble.",
+    "deep": "\n\n# Length for THIS reply\nGo deep: give a thorough, well-"
+            "structured answer with reasoning, examples, and code where useful.",
+}
+
+
+def run(session: str, user_message: str, image: str | None = None,
+        mode: str | None = None) -> Iterator[dict]:
     """Yield events: {type: thought|tool|observation|final|error, ...}.
 
     If `image` (a data URL) is supplied, ULTRON looks at it with a vision
-    model and answers about it directly.
+    model and answers about it directly. `mode` ('brief'|'deep'|'auto')
+    tunes answer length for this turn.
     """
     logged = user_message + (" [image attached]" if image else "")
     memory.add_message(session, "user", logged)
 
+    mode_hint = _MODE_HINTS.get(mode or "", "")
+
     # --- vision branch: an image was attached ---
     if image:
         yield {"type": "thought", "text": "Analysing the attached image."}
-        vsystem = SYSTEM_PROMPT + "\n\n" + profile_prompt()
+        vsystem = SYSTEM_PROMPT + "\n\n" + profile_prompt() + mode_hint
         answer = vision_complete(vsystem, user_message, image)
         memory.add_message(session, "assistant", answer)
         yield {"type": "final", "text": answer}
         return
 
-    system = (SYSTEM_PROMPT + "\n\n" + profile_prompt() + "\n\n"
+    system = (SYSTEM_PROMPT + "\n\n" + profile_prompt() + mode_hint + "\n\n"
               + _PROTOCOL.format(tools=tool_catalog()))
     convo = [{"role": "system", "content": system}]
     convo += memory.get_history(session, limit=20)

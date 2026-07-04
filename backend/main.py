@@ -70,6 +70,7 @@ class ChatIn(BaseModel):
     message: str
     session: str = "default"
     image: str | None = None  # optional data URL for vision
+    mode: str | None = None   # 'brief' | 'deep' | 'auto'
 
 
 @app.post("/api/login")
@@ -94,6 +95,20 @@ def status(_: None = Depends(require_user)) -> dict:
             {"name": t.name, "description": t.description} for t in REGISTRY.values()
         ],
     }
+
+
+class BrainIn(BaseModel):
+    provider: str
+
+
+@app.post("/api/brain")
+def set_brain(body: BrainIn, _: None = Depends(require_user)) -> dict:
+    """Switch ULTRON's brain at runtime (no restart needed)."""
+    p = body.provider.strip().lower()
+    if p not in {"anthropic", "openai", "groq", "gemini", "mock"}:
+        raise HTTPException(status_code=400, detail="unknown provider")
+    settings.llm_provider = p
+    return {"provider": p, "brain": settings.brain_status()}
 
 
 @app.get("/api/auth-required")
@@ -122,7 +137,7 @@ def history(session: str = "default", _: None = Depends(require_user)) -> dict:
 
 @app.post("/api/chat")
 def chat(body: ChatIn, _: None = Depends(require_user)) -> JSONResponse:
-    events = list(agent.run(body.session, body.message, body.image))
+    events = list(agent.run(body.session, body.message, body.image, body.mode))
     final = next((e["text"] for e in reversed(events) if e["type"] == "final"), "")
     return JSONResponse({"reply": final, "events": events})
 
@@ -148,9 +163,10 @@ async def ws(sock: WebSocket) -> None:
             message = data.get("message", "")
             session = data.get("session", "default")
             image = data.get("image")
+            mode = data.get("mode")
             if not message.strip() and not image:
                 continue
-            for event in agent.run(session, message, image):
+            for event in agent.run(session, message, image, mode):
                 await sock.send_json(event)
             await sock.send_json({"type": "done"})
     except WebSocketDisconnect:

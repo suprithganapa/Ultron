@@ -187,19 +187,33 @@ _PROVIDERS: dict[str, Callable[[Messages], str]] = {
 
 
 def complete(messages: Messages) -> str:
-    """Route to the configured provider; fall back to mock on any failure."""
-    provider = settings.llm_provider
-    if provider != "mock" and not settings.active_key():
-        provider = "mock"
-    fn = _PROVIDERS.get(provider, _mock)
-    try:
-        return fn(messages)
-    except Exception as e:  # network / auth / quota — degrade gracefully
-        # Fall back to the mock brain so ULTRON never goes fully dark.
+    """Route to the configured provider, then cascade through any other
+    provider that has a key, and finally the mock brain — so a bad key,
+    an inaccessible model, or a quota hit never leaves ULTRON brain-dead.
+    """
+    order: list[str] = []
+    if settings.llm_provider != "mock" and settings.active_key():
+        order.append(settings.llm_provider)
+
+    # Fallback order: strongest real brains first, then mock.
+    keymap = {
+        "anthropic": settings.anthropic_api_key,
+        "openai": settings.openai_api_key,
+        "groq": settings.groq_api_key,
+        "gemini": settings.gemini_api_key,
+    }
+    for name, key in keymap.items():
+        if key and name not in order:
+            order.append(name)
+    order.append("mock")
+
+    errors = []
+    for name in order:
         try:
-            return _mock(messages)
-        except Exception:
-            return json.dumps({"final": f"Brain error ({provider}): {e}"})
+            return _PROVIDERS[name](messages)
+        except Exception as e:  # try the next brain
+            errors.append(f"{name}: {e}")
+    return json.dumps({"final": "All brains failed: " + " | ".join(errors)})
 
 
 # --------------------------------------------------------------------------

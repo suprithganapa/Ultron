@@ -33,6 +33,7 @@ const els = {
 let ws = null;
 let voiceOn = true;
 let pendingImage = null;   // data URL of an attached image
+let responseMode = localStorage.getItem("ultron-mode") || "auto";  // auto|brief|deep
 
 /* Fetch helper that always attaches the auth token. */
 function authFetch(url, opts = {}) {
@@ -74,7 +75,7 @@ function handleEvent(ev) {
       break;
     case "final":
       setReactor("idle");
-      addUltron(ev.text);
+      typeUltron(ev.text);
       if (voiceOn) speak(ev.text);
       refreshOps();
       break;
@@ -100,9 +101,93 @@ function addUser(text, imageUrl) {
 function addUltron(text) {
   const d = document.createElement("div");
   d.className = "msg ultron";
-  d.innerHTML = `<div class="who">ULTRON</div>${escapeHtml(text)}`;
+  const who = document.createElement("div");
+  who.className = "who";
+  who.textContent = "ULTRON";
+  const body = document.createElement("div");
+  body.className = "md";
+  body.innerHTML = renderMarkdown(text);
+  d.appendChild(who);
+  d.appendChild(body);
   els.messages.appendChild(d);
+  enhanceCodeBlocks(body);
   scroll();
+}
+
+/* Typewriter streaming: reveal the answer token-by-token, then render
+   full markdown + code blocks once complete (like modern AI chats). */
+function typeUltron(text) {
+  const d = document.createElement("div");
+  d.className = "msg ultron";
+  const who = document.createElement("div");
+  who.className = "who";
+  who.textContent = "ULTRON";
+  const body = document.createElement("div");
+  body.className = "md type-caret";
+  const raw = document.createElement("span");
+  body.appendChild(raw);
+  d.appendChild(who);
+  d.appendChild(body);
+  els.messages.appendChild(d);
+
+  const tokens = text.split(/(\s+)/);   // keep whitespace between words
+  let i = 0;
+  const timer = setInterval(() => {
+    // reveal a few tokens per tick for a snappy but visible stream
+    for (let k = 0; k < 2 && i < tokens.length; k++, i++) raw.textContent += tokens[i];
+    scroll();
+    if (i >= tokens.length) {
+      clearInterval(timer);
+      body.classList.remove("type-caret");
+      body.innerHTML = renderMarkdown(text);
+      enhanceCodeBlocks(body);
+      scroll();
+    }
+  }, 16);
+}
+
+/* Render markdown -> HTML (falls back to plain text if lib not loaded). */
+function renderMarkdown(text) {
+  if (window.marked) {
+    try { return marked.parse(text, { breaks: true, gfm: true }); }
+    catch (_) {}
+  }
+  return escapeHtml(text);
+}
+
+/* Give every code block a language header + a Copy button, and highlight it. */
+function enhanceCodeBlocks(root) {
+  root.querySelectorAll("pre").forEach((pre) => {
+    const code = pre.querySelector("code");
+    let lang = "code";
+    if (code) {
+      const c = [...code.classList].find((x) => x.startsWith("language-"));
+      if (c) lang = c.replace("language-", "");
+      if (window.hljs) { try { hljs.highlightElement(code); } catch (_) {} }
+    }
+    const wrap = document.createElement("div");
+    wrap.className = "code-wrap";
+    const head = document.createElement("div");
+    head.className = "code-head";
+    const label = document.createElement("span");
+    label.className = "code-lang";
+    label.textContent = lang;
+    const btn = document.createElement("button");
+    btn.className = "code-copy";
+    btn.textContent = "Copy";
+    btn.onclick = () => {
+      const t = code ? code.innerText : pre.innerText;
+      navigator.clipboard.writeText(t).then(() => {
+        btn.textContent = "Copied";
+        setTimeout(() => (btn.textContent = "Copy"), 1500);
+      });
+    };
+    head.appendChild(label);
+    head.appendChild(btn);
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(head);
+    wrap.appendChild(pre);
+  });
 }
 function addEvent(cls, tag, text) {
   const d = document.createElement("div");
@@ -118,7 +203,7 @@ function send() {
   const text = els.input.value.trim();
   if ((!text && !pendingImage) || !ws || ws.readyState !== 1) return;
   addUser(text || "(look at this)", pendingImage);
-  const payload = { message: text, session: SESSION };
+  const payload = { message: text, session: SESSION, mode: responseMode };
   if (pendingImage) payload.image = pendingImage;
   els.input.value = "";
   clearAttachment();
@@ -156,20 +241,166 @@ function setReactor(state) {
   if (state === "speaking") els.reactor.classList.add("speaking");
 }
 
+/* ---------------- projects / workspaces ---------------- */
+/* Each project is its own conversation memory (keyed by session id on the
+   backend), so ULTRON keeps separate context per topic. */
+let projects = JSON.parse(localStorage.getItem("ultron-projects") || "null");
+if (!projects) {
+  projects = [{ id: SESSION, name: "General" }];
+  localStorage.setItem("ultron-projects", JSON.stringify(projects));
+  localStorage.setItem("ultron-current", SESSION);
+}
+SESSION = localStorage.getItem("ultron-current") || projects[0].id;
+
+const projectPill = document.getElementById("project-pill");
+const projectPanel = document.getElementById("project-panel");
+const projectList = document.getElementById("project-list");
+
+function saveProjects() {
+  localStorage.setItem("ultron-projects", JSON.stringify(projects));
+  localStorage.setItem("ultron-current", SESSION);
+}
+function currentProjectName() {
+  const p = projects.find((x) => x.id === SESSION);
+  return p ? p.name : "General";
+}
+function renderProjectPill() { projectPill.textContent = "project: " + currentProjectName(); }
+
+function renderProjectList() {
+  projectList.innerHTML = "";
+  projects.forEach((p) => {
+    const row = document.createElement("div");
+    row.className = "project-row";
+    const open = document.createElement("button");
+    open.className = "open" + (p.id === SESSION ? " active" : "");
+    open.textContent = p.name;
+    open.onclick = () => switchProject(p.id);
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "×";
+    del.title = "Delete project";
+    del.onclick = (e) => { e.stopPropagation(); deleteProject(p.id); };
+    row.appendChild(open);
+    if (projects.length > 1) row.appendChild(del);
+    projectList.appendChild(row);
+  });
+}
+
+async function switchProject(id) {
+  if (id === SESSION) { projectPanel.hidden = true; return; }
+  SESSION = id;
+  saveProjects();
+  renderProjectPill();
+  els.messages.innerHTML = "";
+  projectPanel.hidden = true;
+  const had = await loadHistory();
+  if (!had) addUltron(`Switched to "${currentProjectName()}". Fresh context, sir — what are we working on?`);
+  refreshOps();
+}
+
+function createProject(name) {
+  const id = "p-" + Math.random().toString(36).slice(2, 10);
+  projects.push({ id, name: name.trim() || "Untitled" });
+  saveProjects();
+  switchProject(id);
+}
+
+function deleteProject(id) {
+  projects = projects.filter((p) => p.id !== id);
+  if (!projects.length) projects = [{ id: "p-" + Math.random().toString(36).slice(2, 10), name: "General" }];
+  if (SESSION === id) { SESSION = projects[0].id; els.messages.innerHTML = ""; loadHistory(); }
+  saveProjects();
+  renderProjectPill();
+  renderProjectList();
+}
+
+projectPill.onclick = () => {
+  projectPanel.hidden = !projectPanel.hidden;
+  if (!projectPanel.hidden) renderProjectList();
+};
+document.getElementById("new-project-btn").onclick = () => {
+  const inp = document.getElementById("new-project-name");
+  if (inp.value.trim()) { createProject(inp.value); inp.value = ""; }
+};
+document.getElementById("new-project-name").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("new-project-btn").click();
+});
+renderProjectPill();
+
+/* ---------------- response length toggle ---------------- */
+const modePill = document.getElementById("mode-pill");
+function renderModePill() { modePill.textContent = "length: " + responseMode; }
+renderModePill();
+modePill.onclick = () => {
+  responseMode = { auto: "brief", brief: "deep", deep: "auto" }[responseMode];
+  localStorage.setItem("ultron-mode", responseMode);
+  renderModePill();
+};
+
 /* ---------------- voice: text to speech ---------------- */
+const voicePrefs = {
+  name: localStorage.getItem("ultron-voice") || "",
+  rate: parseFloat(localStorage.getItem("ultron-rate") || "1.02"),
+  pitch: parseFloat(localStorage.getItem("ultron-pitch") || "0.9"),
+};
+
+function pickVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  if (voicePrefs.name) {
+    const v = voices.find((x) => x.name === voicePrefs.name);
+    if (v) return v;
+  }
+  return voices.find(v => /male|david|daniel|google uk english male/i.test(v.name))
+      || voices.find(v => /en-GB|en-US/i.test(v.lang));
+}
+
 function speak(text) {
   if (!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(stripForSpeech(text));
-  u.rate = 1.02; u.pitch = 0.9;
-  const voices = window.speechSynthesis.getVoices();
-  const pref = voices.find(v => /male|david|daniel|google uk english male/i.test(v.name))
-            || voices.find(v => /en-GB|en-US/i.test(v.lang));
+  u.rate = voicePrefs.rate; u.pitch = voicePrefs.pitch;
+  const pref = pickVoice();
   if (pref) u.voice = pref;
   u.onstart = () => setReactor("speaking");
   u.onend = () => setReactor("idle");
   window.speechSynthesis.speak(u);
 }
+
+/* ---------------- voice settings panel ---------------- */
+const voicePanel = document.getElementById("voice-panel");
+const voiceSelect = document.getElementById("voice-select");
+const rateRange = document.getElementById("rate-range");
+const pitchRange = document.getElementById("pitch-range");
+document.getElementById("voice-pill").onclick = () => {
+  voicePanel.hidden = !voicePanel.hidden;
+  if (!voicePanel.hidden) populateVoices();
+};
+function populateVoices() {
+  const voices = window.speechSynthesis.getVoices();
+  voiceSelect.innerHTML = voices.map(v =>
+    `<option value="${escapeHtml(v.name)}" ${v.name === voicePrefs.name ? "selected" : ""}>${escapeHtml(v.name)} (${v.lang})</option>`
+  ).join("");
+  rateRange.value = voicePrefs.rate;
+  pitchRange.value = voicePrefs.pitch;
+  document.getElementById("rate-val").textContent = voicePrefs.rate.toFixed(2);
+  document.getElementById("pitch-val").textContent = voicePrefs.pitch.toFixed(2);
+}
+voiceSelect.onchange = () => {
+  voicePrefs.name = voiceSelect.value;
+  localStorage.setItem("ultron-voice", voicePrefs.name);
+};
+rateRange.oninput = () => {
+  voicePrefs.rate = parseFloat(rateRange.value);
+  localStorage.setItem("ultron-rate", voicePrefs.rate);
+  document.getElementById("rate-val").textContent = voicePrefs.rate.toFixed(2);
+};
+pitchRange.oninput = () => {
+  voicePrefs.pitch = parseFloat(pitchRange.value);
+  localStorage.setItem("ultron-pitch", voicePrefs.pitch);
+  document.getElementById("pitch-val").textContent = voicePrefs.pitch.toFixed(2);
+};
+document.getElementById("voice-test").onclick = () =>
+  speak("Systems online. This is how I sound, sir.");
 
 els.voiceToggle.onclick = () => {
   voiceOn = !voiceOn;
@@ -329,6 +560,118 @@ function showLogin() {
     };
   });
 }
+
+/* ---------------- export / share ---------------- */
+async function getConversation() {
+  try {
+    const r = await authFetch("/api/history?session=" + encodeURIComponent(SESSION));
+    return (await r.json()).messages || [];
+  } catch (_) { return []; }
+}
+function downloadFile(name, text, type) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function exportMarkdown() {
+  const msgs = await getConversation();
+  const name = currentProjectName();
+  let md = `# ULTRON — ${name}\n\n_Exported ${new Date().toLocaleString()}_\n\n`;
+  for (const m of msgs)
+    md += (m.role === "user" ? "**You:**\n\n" : "**ULTRON:**\n\n") + m.content + "\n\n---\n\n";
+  downloadFile(`ultron-${name.replace(/\s+/g, "-").toLowerCase()}.md`, md, "text/markdown");
+}
+async function exportPDF() {
+  const msgs = await getConversation();
+  const name = currentProjectName();
+  const rows = msgs.map(m =>
+    `<div class="turn ${m.role}"><b>${m.role === "user" ? "You" : "ULTRON"}</b>` +
+    `<div>${escapeHtml(m.content).replace(/\n/g, "<br>")}</div></div>`).join("");
+  const w = window.open("", "_blank");
+  w.document.write(
+    `<html><head><title>ULTRON — ${name}</title><style>` +
+    `body{font-family:Segoe UI,system-ui,sans-serif;max-width:760px;margin:40px auto;color:#111;padding:0 20px}` +
+    `h1{color:#0a7ea4}.turn{margin:0 0 18px;padding-bottom:12px;border-bottom:1px solid #eee}` +
+    `.turn b{display:block;color:#0a7ea4;margin-bottom:4px}.user b{color:#b8860b}` +
+    `</style></head><body><h1>ULTRON — ${name}</h1><p>${new Date().toLocaleString()}</p>` +
+    rows + `<scr` + `ipt>window.onload=()=>window.print()</scr` + `ipt></body></html>`);
+  w.document.close();
+}
+
+/* ---------------- live brain switch + clear ---------------- */
+async function setBrain(provider) {
+  try {
+    const r = await authFetch("/api/brain", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider }),
+    });
+    const d = await r.json();
+    els.brainText.textContent = "brain: " + d.provider;
+    addUltron(`Brain switched to **${d.provider}** — ${d.brain}`);
+  } catch (_) { addUltron("Couldn't switch brain, sir."); }
+}
+function setMode(m) { responseMode = m; localStorage.setItem("ultron-mode", m); renderModePill(); }
+async function clearConversation() {
+  await authFetch("/api/clear", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "", session: SESSION }),
+  });
+  els.messages.innerHTML = "";
+  addUltron("Conversation cleared, sir. Fresh slate.");
+}
+
+/* ---------------- command palette (Ctrl/Cmd + K) ---------------- */
+const cmdk = document.getElementById("cmdk");
+const cmdkInput = document.getElementById("cmdk-input");
+const cmdkList = document.getElementById("cmdk-list");
+let cmdkSel = 0, cmdkCmds = [];
+
+function buildCommands() {
+  const cmds = [
+    { label: "New project…", run: () => { const n = prompt("Project name:"); if (n) createProject(n); } },
+    { label: "Clear this conversation", run: clearConversation },
+    { label: "Export as Markdown", run: exportMarkdown },
+    { label: "Export as PDF", run: exportPDF },
+    { label: "Toggle voice replies", run: () => els.voiceToggle.click() },
+    { label: "Length: Auto", run: () => setMode("auto") },
+    { label: "Length: Brief", run: () => setMode("brief") },
+    { label: "Length: Deep", run: () => setMode("deep") },
+    { label: "Brain: Claude (Anthropic)", run: () => setBrain("anthropic") },
+    { label: "Brain: GPT-4o (OpenAI)", run: () => setBrain("openai") },
+    { label: "Brain: Groq (Llama)", run: () => setBrain("groq") },
+    { label: "Brain: Gemini", run: () => setBrain("gemini") },
+  ];
+  projects.forEach(p => {
+    if (p.id !== SESSION) cmds.push({ label: "Switch to: " + p.name, run: () => switchProject(p.id) });
+  });
+  return cmds;
+}
+function openCmdk() { cmdk.hidden = false; cmdkInput.value = ""; cmdkSel = 0; renderCmdk(""); cmdkInput.focus(); }
+function closeCmdk() { cmdk.hidden = true; }
+function renderCmdk(q) {
+  cmdkCmds = buildCommands().filter(c => c.label.toLowerCase().includes(q.toLowerCase()));
+  if (cmdkSel >= cmdkCmds.length) cmdkSel = 0;
+  cmdkList.innerHTML = cmdkCmds.map((c, i) =>
+    `<div class="cmdk-item ${i === cmdkSel ? "sel" : ""}" data-i="${i}">${escapeHtml(c.label)}</div>`).join("");
+  [...cmdkList.children].forEach(el => (el.onclick = () => runCmdk(parseInt(el.dataset.i))));
+}
+function runCmdk(i) { const c = cmdkCmds[i]; closeCmdk(); if (c) c.run(); }
+cmdkInput.addEventListener("input", () => { cmdkSel = 0; renderCmdk(cmdkInput.value); });
+cmdkInput.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { cmdkSel = Math.min(cmdkSel + 1, cmdkCmds.length - 1); renderCmdk(cmdkInput.value); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { cmdkSel = Math.max(cmdkSel - 1, 0); renderCmdk(cmdkInput.value); e.preventDefault(); }
+  else if (e.key === "Enter") { runCmdk(cmdkSel); }
+  else if (e.key === "Escape") { closeCmdk(); }
+});
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    cmdk.hidden ? openCmdk() : closeCmdk();
+  }
+});
+cmdk.addEventListener("click", (e) => { if (e.target === cmdk) closeCmdk(); });
 
 /* ---------------- boot ---------------- */
 window.addEventListener("load", async () => {
