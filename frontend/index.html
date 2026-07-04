@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ULTRON — AI Assistant</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="login-overlay" class="login-overlay" hidden>
+    <form id="login-form" class="login-box">
+      <div class="logo">ULTR<span>O</span>N</div>
+      <p class="login-sub">Authentication required</p>
+      <input id="login-pw" type="password" placeholder="Access key" autocomplete="current-password" />
+      <button type="submit" class="login-btn">Authenticate</button>
+      <div id="login-err" class="login-err"></div>
+    </form>
+  </div>
+
+  <div class="app">
+
+    <!-- header -->
+    <header class="header">
+      <div class="logo">ULTR<span>O</span>N</div>
+      <div class="tagline">UNIFIED&nbsp;LOGIC&nbsp;·&nbsp;TACTICAL&nbsp;RESPONSE&nbsp;·&nbsp;OPERATIONS&nbsp;NETWORK</div>
+      <div class="spacer"></div>
+      <div class="status-pill"><span id="conn-dot" class="dot"></span><span id="conn-text">connecting…</span></div>
+      <div class="status-pill"><span id="brain-text">brain: —</span></div>
+    </header>
+
+    <!-- left: reactor + tools -->
+    <aside class="panel left">
+      <h2>Core</h2>
+      <div class="reactor-wrap">
+        <div id="reactor" class="reactor"><div class="core"></div></div>
+      </div>
+      <h2>Capabilities</h2>
+      <div id="tools" class="body"></div>
+    </aside>
+
+    <!-- center: chat -->
+    <main class="panel chat">
+      <h2>Conversation</h2>
+      <div id="messages" class="messages"></div>
+      <div id="attach-preview" class="attach-preview" hidden>
+        <img id="attach-img" alt="attachment" />
+        <button id="attach-remove" title="Remove image">&times;</button>
+      </div>
+      <div class="inputbar">
+        <input type="file" id="file-input" accept="image/*" hidden />
+        <button id="attach" class="btn" title="Attach image" aria-label="Attach image">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.5 12.5 21a4.5 4.5 0 0 1-6.4-6.4l8.5-8.5a3 3 0 0 1 4.2 4.2l-8.5 8.5a1.5 1.5 0 0 1-2.1-2.1l7.8-7.8"/>
+          </svg>
+        </button>
+        <button id="mic" class="btn mic" title="Speak" aria-label="Speak">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/>
+          </svg>
+        </button>
+        <input id="input" placeholder="Speak or type a command for ULTRON…" autocomplete="off" />
+        <button id="send" class="btn" title="Send" aria-label="Send">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/>
+          </svg>
+        </button>
+        <button id="voice-toggle" class="btn active" title="Toggle voice reply" aria-label="Toggle voice reply">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="4 9 4 15 8 15 13 19 13 5 8 9 4 9"/><path d="M17 8a5 5 0 0 1 0 8"/>
+          </svg>
+        </button>
+      </div>
+    </main>
+
+    <!-- right: personal ops -->
+    <aside class="panel right">
+      <h2>Operations</h2>
+      <div class="body" id="ops"></div>
+    </aside>
+
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

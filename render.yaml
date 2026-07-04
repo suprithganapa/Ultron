@@ -1,0 +1,41 @@
+# Render blueprint for ULTRON.
+# In the Render dashboard: New > Blueprint, point it at your GitHub repo.
+# It provisions a free Postgres (durable memory) and the web service.
+#
+# After the first deploy, set the SECRET values (marked sync:false) in the
+# Render dashboard → your service → Environment.
+
+databases:
+  - name: ultron-db
+    plan: free
+
+services:
+  - type: web
+    name: ultron
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/auth-required
+    envVars:
+      - key: PUBLIC_MODE
+        value: "true"
+      - key: HOST
+        value: "0.0.0.0"
+      # Durable memory: Render injects the Postgres connection string.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ultron-db
+          property: connectionString
+      # Auto-generate a strong token-signing secret.
+      - key: ULTRON_SECRET
+        generateValue: true
+      # --- set these yourself in the dashboard (kept out of git) ---
+      - key: ULTRON_PASSWORD
+        sync: false
+      - key: LLM_PROVIDER
+        value: "groq"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
