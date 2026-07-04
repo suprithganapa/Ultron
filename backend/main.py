@@ -48,6 +48,12 @@ def _startup() -> None:
 
 # --------------------------- auth plumbing ---------------------------
 
+@app.get("/api/health")
+def health() -> dict:
+    """Public health check for the host's load balancer (no auth)."""
+    return {"ok": True, "service": "ULTRON", "version": "2.0.0"}
+
+
 def require_user(authorization: str | None = Header(default=None)) -> int:
     token = None
     if authorization and authorization.lower().startswith("bearer "):

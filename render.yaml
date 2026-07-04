@@ -14,7 +14,7 @@ services:
     name: ultron
     runtime: docker
     plan: free
-    healthCheckPath: /api/auth-required
+    healthCheckPath: /api/health
     envVars:
       - key: PUBLIC_MODE
         value: "true"
