@@ -15,7 +15,7 @@ import json
 import re
 from typing import Iterator
 
-from . import memory
+from . import context, memory
 from .config import SYSTEM_PROMPT, settings
 from .llm import complete, vision_complete
 from .profile import profile_prompt
@@ -69,32 +69,33 @@ _MODE_HINTS = {
 }
 
 
-def run(session: str, user_message: str, image: str | None = None,
-        mode: str | None = None) -> Iterator[dict]:
+def run(user_id: int, conversation_id: int, user_message: str,
+        image: str | None = None, mode: str | None = None) -> Iterator[dict]:
     """Yield events: {type: thought|tool|observation|final|error, ...}.
 
-    If `image` (a data URL) is supplied, ULTRON looks at it with a vision
-    model and answers about it directly. `mode` ('brief'|'deep'|'auto')
-    tunes answer length for this turn.
+    Scoped to a specific user and conversation. If `image` (a data URL) is
+    supplied, ULTRON looks at it with a vision model. `mode`
+    ('brief'|'deep'|'auto') tunes answer length for this turn.
     """
+    context.set_user(user_id)  # so per-user tools touch the right data
     logged = user_message + (" [image attached]" if image else "")
-    memory.add_message(session, "user", logged)
+    memory.add_message(conversation_id, user_id, "user", logged)
 
     mode_hint = _MODE_HINTS.get(mode or "", "")
 
     # --- vision branch: an image was attached ---
     if image:
         yield {"type": "thought", "text": "Analysing the attached image."}
-        vsystem = SYSTEM_PROMPT + "\n\n" + profile_prompt() + mode_hint
+        vsystem = SYSTEM_PROMPT + "\n\n" + profile_prompt(user_id) + mode_hint
         answer = vision_complete(vsystem, user_message, image)
-        memory.add_message(session, "assistant", answer)
+        memory.add_message(conversation_id, user_id, "assistant", answer)
         yield {"type": "final", "text": answer}
         return
 
-    system = (SYSTEM_PROMPT + "\n\n" + profile_prompt() + mode_hint + "\n\n"
+    system = (SYSTEM_PROMPT + "\n\n" + profile_prompt(user_id) + mode_hint + "\n\n"
               + _PROTOCOL.format(tools=tool_catalog()))
     convo = [{"role": "system", "content": system}]
-    convo += memory.get_history(session, limit=20)
+    convo += memory.get_messages(conversation_id, limit=20)
 
     for step in range(MAX_STEPS):
         raw = complete(convo)
@@ -106,7 +107,7 @@ def run(session: str, user_message: str, image: str | None = None,
 
         if "final" in data:
             answer = data["final"]
-            memory.add_message(session, "assistant", answer)
+            memory.add_message(conversation_id, user_id, "assistant", answer)
             yield {"type": "final", "text": answer}
             return
 
@@ -114,7 +115,7 @@ def run(session: str, user_message: str, image: str | None = None,
         action_input = data.get("action_input", {}) or {}
         if not action:
             answer = raw
-            memory.add_message(session, "assistant", answer)
+            memory.add_message(conversation_id, user_id, "assistant", answer)
             yield {"type": "final", "text": answer}
             return
 

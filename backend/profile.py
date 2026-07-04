@@ -1,75 +1,65 @@
 """
-User profile — this is what makes ULTRON *yours*.
+Per-user profile — what makes ULTRON personal to each account.
 
-A small JSON file holds who you are, your preferences, and free-form facts
-ULTRON learns about you over time. It is injected into the system prompt on
-every turn, so ULTRON always answers with you in mind.
+Stored in the database (profiles table), one per user. Injected into the
+system prompt every turn so ULTRON always answers with that user in mind.
 """
 from __future__ import annotations
 
-import json
 from typing import Any
 
-from .config import settings
-
-PROFILE_PATH = settings.data_dir / "profile.json"
+from . import memory
 
 DEFAULT_PROFILE: dict[str, Any] = {
-    "name": "Suprith",
-    "email": "suprithgb2005@gmail.com",
+    "name": "",
+    "email": "",
     "role": "",
     "location": "",
     "about": "",
-    "preferences": [],   # e.g. "prefers concise answers"
-    "facts": [],         # free-form things ULTRON has learned
+    "preferences": [],
+    "facts": [],
 }
 
 
-def load_profile() -> dict[str, Any]:
-    if PROFILE_PATH.exists():
-        try:
-            data = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
-            # backfill any missing keys
-            return {**DEFAULT_PROFILE, **data}
-        except Exception:
-            pass
-    save_profile(DEFAULT_PROFILE)
-    return dict(DEFAULT_PROFILE)
+def load_profile(user_id: int) -> dict[str, Any]:
+    p = memory.get_profile(user_id)
+    if p is None:
+        p = dict(DEFAULT_PROFILE)
+        user = memory.get_user(user_id)
+        if user:
+            p["email"] = user["email"]
+            p["name"] = user["email"].split("@")[0].title()
+        memory.save_profile(user_id, p)
+    return {**DEFAULT_PROFILE, **p}
 
 
-def save_profile(profile: dict[str, Any]) -> None:
-    PROFILE_PATH.write_text(json.dumps(profile, indent=2), encoding="utf-8")
-
-
-def set_field(field: str, value: str) -> str:
-    p = load_profile()
+def set_field(user_id: int, field: str, value: str) -> str:
+    p = load_profile(user_id)
     if field not in p or field in ("facts", "preferences"):
-        return f"Unknown profile field '{field}'. Use one of: " \
-               f"name, email, role, location, about."
+        return "Unknown profile field. Use: name, email, role, location, about."
     p[field] = value
-    save_profile(p)
+    memory.save_profile(user_id, p)
     return f"Updated your {field} to '{value}'."
 
 
-def add_fact(fact: str) -> str:
-    p = load_profile()
+def add_fact(user_id: int, fact: str) -> str:
+    p = load_profile(user_id)
     if fact not in p["facts"]:
         p["facts"].append(fact)
-        save_profile(p)
+        memory.save_profile(user_id, p)
     return f"Got it — I'll remember that: {fact}"
 
 
-def add_preference(pref: str) -> str:
-    p = load_profile()
+def add_preference(user_id: int, pref: str) -> str:
+    p = load_profile(user_id)
     if pref not in p["preferences"]:
         p["preferences"].append(pref)
-        save_profile(p)
+        memory.save_profile(user_id, p)
     return f"Noted your preference: {pref}"
 
 
-def profile_prompt() -> str:
-    """Render the profile as a block for the system prompt."""
-    p = load_profile()
+def profile_prompt(user_id: int) -> str:
+    p = load_profile(user_id)
     lines = ["--- WHO YOU SERVE (your user) ---"]
     if p.get("name"):
         lines.append(f"Name: {p['name']}")
@@ -86,8 +76,6 @@ def profile_prompt() -> str:
     if p.get("facts"):
         lines.append("Things you know about them:")
         lines += [f"  - {f}" for f in p["facts"]]
-    lines.append(
-        "Always address them by name when natural, honour their preferences, "
-        "and use these facts to personalise every answer."
-    )
+    lines.append("Always address them by name when natural, honour their "
+                 "preferences, and personalise every answer.")
     return "\n".join(lines)

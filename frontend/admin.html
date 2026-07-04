@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ULTRON — Admin</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .admin { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .admin-head { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+    .admin-head .spacer { flex: 1; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 22px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+    .card .n { font-size: 30px; font-weight: 800; color: var(--cyan); text-shadow: var(--glow); }
+    .card .l { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+    th { color: var(--cyan); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+    tr:last-child td { border-bottom: none; }
+    .badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; border: 1px solid var(--line); }
+    .badge.admin { color: var(--gold); border-color: var(--gold); }
+    .badge.off { color: var(--red); border-color: var(--red); }
+    .badge.ok { color: var(--green); border-color: var(--green); }
+    .act { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; margin-right: 6px; }
+    .act:hover { border-color: var(--cyan); color: var(--cyan); }
+    .act.danger:hover { border-color: var(--red); color: var(--red); }
+    .health { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--text-dim); }
+    .health b { color: var(--text); }
+    h2.sec { color: var(--cyan); font-size: 13px; letter-spacing: 2px; text-transform: uppercase; margin: 22px 0 10px; }
+    a.back { color: var(--cyan); text-decoration: none; }
+    #denied { text-align: center; margin-top: 20vh; color: var(--text-dim); }
+  </style>
+</head>
+<body>
+  <div class="admin">
+    <div class="admin-head">
+      <div class="logo">ULTR<span>O</span>N</div>
+      <span class="tagline">ADMIN&nbsp;CONTROL</span>
+      <div class="spacer"></div>
+      <a class="back" href="/">← back to chat</a>
+    </div>
+
+    <div id="denied" hidden>
+      <p>Admin access required.</p>
+      <p><a class="back" href="/">Return to ULTRON</a></p>
+    </div>
+
+    <div id="panel" hidden>
+      <div class="cards" id="cards"></div>
+
+      <h2 class="sec">System health</h2>
+      <div class="card"><div class="health" id="health"></div></div>
+
+      <h2 class="sec">Users</h2>
+      <table>
+        <thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Status</th><th>Convos</th><th>Messages</th><th>Joined</th><th>Actions</th></tr></thead>
+        <tbody id="users"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

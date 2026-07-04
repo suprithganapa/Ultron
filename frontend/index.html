@@ -5,26 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ULTRON — AI Assistant</title>
   <link rel="stylesheet" href="/style.css" />
-  <!-- Markdown + syntax highlighting for rich, copyable code answers -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
-  <div id="login-overlay" class="login-overlay" hidden>
-    <form id="login-form" class="login-box">
+
+  <!-- auth (login / register) -->
+  <div id="auth-overlay" class="login-overlay" hidden>
+    <form id="auth-form" class="login-box">
       <div class="logo">ULTR<span>O</span>N</div>
-      <p class="login-sub">Authentication required</p>
-      <input id="login-pw" type="password" placeholder="Access key" autocomplete="current-password" />
-      <button type="submit" class="login-btn">Authenticate</button>
-      <div id="login-err" class="login-err"></div>
+      <p class="login-sub" id="auth-sub">Sign in to your account</p>
+      <input id="auth-email" type="email" placeholder="Email" autocomplete="email" />
+      <input id="auth-pw" type="password" placeholder="Password" autocomplete="current-password" />
+      <button type="submit" class="login-btn" id="auth-submit">Sign in</button>
+      <div id="auth-err" class="login-err"></div>
+      <div class="auth-toggle">
+        <span id="auth-switch-text">New here?</span>
+        <a href="#" id="auth-switch">Create an account</a>
+      </div>
     </form>
   </div>
 
   <!-- command palette (Ctrl/Cmd + K) -->
   <div id="cmdk" class="cmdk" hidden>
     <div class="cmdk-box">
-      <input id="cmdk-input" placeholder="Type a command…  (projects, brain, clear, export)" autocomplete="off" />
+      <input id="cmdk-input" placeholder="Type a command…  (new chat, brain, clear, export)" autocomplete="off" />
       <div id="cmdk-list" class="cmdk-list"></div>
       <div class="cmdk-hint">↑↓ to move · Enter to run · Esc to close</div>
     </div>
@@ -32,56 +38,50 @@
 
   <div class="app">
 
-    <!-- header -->
     <header class="header">
       <div class="logo">ULTR<span>O</span>N</div>
       <div class="tagline">UNIFIED&nbsp;LOGIC&nbsp;·&nbsp;TACTICAL&nbsp;RESPONSE&nbsp;·&nbsp;OPERATIONS&nbsp;NETWORK</div>
       <div class="spacer"></div>
       <div class="status-pill"><span id="conn-dot" class="dot"></span><span id="conn-text">connecting…</span></div>
       <div class="status-pill"><span id="brain-text">brain: —</span></div>
-      <button id="project-pill" class="status-pill pill-btn" title="Projects / workspaces">project: —</button>
       <button id="mode-pill" class="status-pill pill-btn" title="Response length">length: auto</button>
       <button id="voice-pill" class="status-pill pill-btn" title="Voice settings">voice</button>
+      <a id="admin-link" class="status-pill pill-btn" href="/admin" hidden>admin</a>
+      <button id="account-pill" class="status-pill pill-btn" title="Account">account</button>
     </header>
 
-    <!-- projects / workspaces popover -->
-    <div id="project-panel" class="voice-panel" hidden>
-      <h3>Projects</h3>
-      <div id="project-list"></div>
-      <div class="new-project">
-        <input id="new-project-name" placeholder="New project name…" />
-        <button id="new-project-btn" class="login-btn" style="width:auto;padding:8px 14px">Create</button>
-      </div>
+    <!-- account popover -->
+    <div id="account-panel" class="voice-panel" hidden>
+      <h3>Account</h3>
+      <div id="account-email" class="empty"></div>
+      <button id="logout-btn" class="login-btn" style="width:auto;padding:8px 16px">Log out</button>
     </div>
 
     <!-- voice settings popover -->
     <div id="voice-panel" class="voice-panel" hidden>
       <h3>Voice</h3>
-      <label>Voice
-        <select id="voice-select"></select>
-      </label>
+      <label>Voice <select id="voice-select"></select></label>
       <label>Speed <span id="rate-val">1.0</span>
-        <input id="rate-range" type="range" min="0.6" max="1.6" step="0.05" value="1.02" />
-      </label>
+        <input id="rate-range" type="range" min="0.6" max="1.6" step="0.05" value="1.02" /></label>
       <label>Pitch <span id="pitch-val">0.9</span>
-        <input id="pitch-range" type="range" min="0.5" max="1.5" step="0.05" value="0.9" />
-      </label>
+        <input id="pitch-range" type="range" min="0.5" max="1.5" step="0.05" value="0.9" /></label>
       <button id="voice-test" class="login-btn" style="width:auto;padding:8px 16px">Test voice</button>
     </div>
 
-    <!-- left: reactor + tools -->
+    <!-- left: conversations sidebar -->
     <aside class="panel left">
-      <h2>Core</h2>
+      <div class="conv-head">
+        <button id="new-chat" class="new-chat-btn">＋ New chat</button>
+      </div>
+      <div id="conv-list" class="conv-list"></div>
       <div class="reactor-wrap">
         <div id="reactor" class="reactor"><div class="core"></div></div>
       </div>
-      <h2>Capabilities</h2>
-      <div id="tools" class="body"></div>
     </aside>
 
     <!-- center: chat -->
     <main class="panel chat">
-      <h2>Conversation</h2>
+      <h2 id="chat-title">New chat</h2>
       <div id="messages" class="messages"></div>
       <div id="attach-preview" class="attach-preview" hidden>
         <img id="attach-img" alt="attachment" />
@@ -90,25 +90,17 @@
       <div class="inputbar">
         <input type="file" id="file-input" accept="image/*" hidden />
         <button id="attach" class="btn" title="Attach image" aria-label="Attach image">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12.5 12.5 21a4.5 4.5 0 0 1-6.4-6.4l8.5-8.5a3 3 0 0 1 4.2 4.2l-8.5 8.5a1.5 1.5 0 0 1-2.1-2.1l7.8-7.8"/>
-          </svg>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.5 12.5 21a4.5 4.5 0 0 1-6.4-6.4l8.5-8.5a3 3 0 0 1 4.2 4.2l-8.5 8.5a1.5 1.5 0 0 1-2.1-2.1l7.8-7.8"/></svg>
         </button>
         <button id="mic" class="btn mic" title="Speak" aria-label="Speak">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/>
-          </svg>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
         </button>
         <input id="input" placeholder="Speak or type a command for ULTRON…" autocomplete="off" />
         <button id="send" class="btn" title="Send" aria-label="Send">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/>
-          </svg>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
         </button>
         <button id="voice-toggle" class="btn active" title="Toggle voice reply" aria-label="Toggle voice reply">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="4 9 4 15 8 15 13 19 13 5 8 9 4 9"/><path d="M17 8a5 5 0 0 1 0 8"/>
-          </svg>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="4 9 4 15 8 15 13 19 13 5 8 9 4 9"/><path d="M17 8a5 5 0 0 1 0 8"/></svg>
         </button>
       </div>
     </main>

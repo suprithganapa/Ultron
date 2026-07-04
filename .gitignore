@@ -3,7 +3,15 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+data/
 data/ultron.db
 data/workspace/
 *.log
 .DS_Store
+
+# Secrets — never commit these
+credentials.json
+google_token.json
+.spotify_cache
+*.pem
+*.key
