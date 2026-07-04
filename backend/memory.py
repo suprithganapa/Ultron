@@ -40,7 +40,32 @@ def _q(sql: str) -> str:
     return sql.replace("?", PH) if IS_PG else sql
 
 
+def _has_column(cur, table: str, column: str) -> bool:
+    """True if `table` exists and has `column` (portable across backends)."""
+    try:
+        if IS_PG:
+            cur.execute("SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name=%s AND column_name=%s", (table, column))
+            return cur.fetchone() is not None
+        cur.execute(f"PRAGMA table_info({table})")
+        return any(r[1] == column for r in cur.fetchall())
+    except Exception:
+        return False
+
+
 def init_db() -> None:
+    # Migration: a pre-v2 (single-user) database has messages/notes/tasks/
+    # reminders tables WITHOUT the per-user columns. CREATE TABLE IF NOT EXISTS
+    # would leave the old schema in place, so drop those stale tables first.
+    # (Their pre-multi-user data is disposable; accounts/conversations are new.)
+    with _connect() as c:
+        cur = c.cursor()
+        for table, col in [("messages", "conversation_id"), ("notes", "user_id"),
+                           ("tasks", "user_id"), ("reminders", "user_id")]:
+            if not _has_column(cur, table, col):
+                cur.execute(f"DROP TABLE IF EXISTS {table}")
+        c.commit()
+
     stmts = [
         f"""CREATE TABLE IF NOT EXISTS users (
             id {SERIAL}, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
